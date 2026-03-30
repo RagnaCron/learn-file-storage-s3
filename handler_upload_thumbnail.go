@@ -29,7 +29,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
 	// TODO: implement the upload here
@@ -64,17 +63,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	mediaType := r.Header.Get("Content-Type")
 
 	videoThumbnails[videoID] = thumbnail{
-		data: data,
+		data:      data,
 		mediaType: mediaType,
 	}
 
-	thumbnailURL = fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID.String())
-	video.VideoURL = {
-		
-	}
-	
-
-
+	// thumbnailURL = fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID.String())
+	// video.VideoURL = {
 
 	respondWithJSON(w, http.StatusOK, struct{}{})
 }
