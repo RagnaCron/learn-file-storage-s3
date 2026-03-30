@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -39,7 +40,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	f, fh, err := r.FormFile("thumbnail")
+	f, _, err := r.FormFile("thumbnail")
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Couldn't not read FormFile", err)
 		return
@@ -47,12 +48,13 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	data, err := io.ReadAll(f)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't not ReadAll", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't not ReadAll", err)
 		return
 	}
+
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't not GetVideo", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't not GetVideo", err)
 		return
 	}
 	if userID != video.UserID {
@@ -62,13 +64,19 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	mediaType := r.Header.Get("Content-Type")
 
-	videoThumbnails[videoID] = thumbnail{
-		data:      data,
-		mediaType: mediaType,
+	// videoThumbnails[videoID] = thumbnail{
+	// 	data:      data,
+	// 	mediaType: mediaType,
+	// }
+
+	thumbnailURL := fmt.Sprintf("data:%s;base64,%s", mediaType, base64.StdEncoding.EncodeToString(data))
+	video.ThumbnailURL = &thumbnailURL
+
+	err = cfg.db.UpdateVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't not UpdateVideo", err)
+		return
 	}
 
-	// thumbnailURL = fmt.Sprintf("http://localhost:%s/api/thumbnails/%s", cfg.port, videoID.String())
-	// video.VideoURL = {
-
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	respondWithJSON(w, http.StatusOK, video)
 }
