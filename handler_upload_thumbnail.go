@@ -3,11 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -33,18 +30,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	conT := r.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(conT)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't ParseMediaType", err)
-		return
-	}
-
-	if mediaType != "image/jpeg" || mediaType != "image/png" {
-		respondWithError(w, http.StatusBadRequest, "Not the right mime type", nil)
-		return
-	}
-
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
 	const maxMemory = 10 << 20
@@ -59,6 +44,36 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusBadRequest, "Couldn't read FormFile", err)
 		return
 	}
+	defer f.Close()
+
+	mediaType := r.Header.Get("Content-Type")
+	if mediaType == "" {
+		respondWithError(w, http.StatusBadRequest, "Missing Content-Type for thumbnail", nil)
+		return
+	}
+
+	assetPath := getAssetPath(videoID, mediaType)
+	assetDiskPath := cfg.getAssetDiskPath(assetPath)
+
+	dst, err := os.Create(assetDiskPath)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Unable to create file on server", err)
+		return
+	}
+	defer dst.Close()
+	if _, err = io.Copy(dst, f); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error saving file", err)
+		return
+	}
+	// mediaType, _, err := mime.ParseMediaType(conT)
+	// if err != nil {
+	// 	respondWithError(w, http.StatusInternalServerError, "Couldn't ParseMediaType", err)
+	// 	return
+	// }
+	// if mediaType != "image/jpeg" || mediaType != "image/png" {
+	// 	respondWithError(w, http.StatusBadRequest, "Not the right mime type", nil)
+	// 	return
+	// }
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
@@ -70,21 +85,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	filePath := filepath.Join(cfg.assetsRoot, videoIDString) + "." + strings.Split(conT, "/")[1]
-
-	file, err := os.Create(filePath)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't create file", err)
-		return
-	}
-	_, err = io.Copy(file, f)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't copy file", err)
-		return
-	}
-
-	url := fmt.Sprintf("http://localhost:%s/%s", cfg.port, filePath)
-
+	url := cfg.getAssetURL(assetPath)
 	video.ThumbnailURL = &url
 
 	err = cfg.db.UpdateVideo(video)
