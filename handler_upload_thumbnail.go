@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -32,9 +33,20 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	conT := r.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(conT)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't ParseMediaType", err)
+		return
+	}
+
+	if mediaType != "image/jpeg" || mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Not the right mime type", nil)
+		return
+	}
+
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
-	// TODO: implement the upload here
 	const maxMemory = 10 << 20
 	err = r.ParseMultipartForm(maxMemory)
 	if err != nil {
@@ -58,8 +70,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	mediaType := r.Header.Get("Content-Type")
-	filePath := filepath.Join(cfg.assetsRoot, videoIDString) + "." + strings.Split(mediaType, "/")[1]
+	filePath := filepath.Join(cfg.assetsRoot, videoIDString) + "." + strings.Split(conT, "/")[1]
 
 	file, err := os.Create(filePath)
 	if err != nil {
