@@ -31,8 +31,6 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
-
 	const maxMemory = 10 << 20
 	err = r.ParseMultipartForm(maxMemory)
 	if err != nil {
@@ -40,12 +38,12 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	f, header, err := r.FormFile("thumbnail")
+	file, header, err := r.FormFile("thumbnail")
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Couldn't read FormFile", err)
 		return
 	}
-	defer f.Close()
+	defer file.Close()
 
 	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
 	if err != nil {
@@ -57,7 +55,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	assetPath := getAssetPath(videoID, mediaType)
+	assetPath := getAssetPath(mediaType)
 	assetDiskPath := cfg.getAssetDiskPath(assetPath)
 
 	dst, err := os.Create(assetDiskPath)
@@ -66,19 +64,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer dst.Close()
-	if _, err = io.Copy(dst, f); err != nil {
+	if _, err = io.Copy(dst, file); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error saving file", err)
 		return
 	}
-	// mediaType, _, err := mime.ParseMediaType(conT)
-	// if err != nil {
-	// 	respondWithError(w, http.StatusInternalServerError, "Couldn't ParseMediaType", err)
-	// 	return
-	// }
-	// if mediaType != "image/jpeg" || mediaType != "image/png" {
-	// 	respondWithError(w, http.StatusBadRequest, "Not the right mime type", nil)
-	// 	return
-	// }
 
 	video, err := cfg.db.GetVideo(videoID)
 	if err != nil {
