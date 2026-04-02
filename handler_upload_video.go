@@ -5,6 +5,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -85,6 +86,18 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't seek start of temp file", err)
 		return
+	}
+
+	ratio, err := getVideoAspectRatio(filepath.Join(os.TempDir(), tName))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get aspect ratio", err)
+		return
+	}
+	switch ratio {
+	case "16:9":
+		assetPath = filepath.Join("landscape", assetPath)
+	case "9:16":
+		assetPath = filepath.Join("portrait", assetPath)
 	}
 
 	_, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
