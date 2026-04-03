@@ -2,14 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func (cfg apiConfig) ensureAssetsDir() error {
@@ -47,29 +50,67 @@ func mediaTypeToExt(mediaType string) string {
 }
 
 func getVideoAspectRatio(filePath string) (string, error) {
-	type VideoMetaData struct {
+	type stream struct {
 		Width  int `json:"width"`
 		Height int `json:"height"`
 	}
-	com := exec.Command("ffprobe", "-v", "error", "-print_format", "json", "-show_streams", filePath)
-	var stdout, stderr bytes.Buffer
-	com.Stdout = &stdout
-	com.Stderr = &stderr
-	err := com.Run()
-	if err != nil {
-		return "", fmt.Errorf("ffprobe failed: %w, stderr: %s", err, stderr.String())
-	}
-	var meta VideoMetaData
-	err = json.Unmarshal(stdout.Bytes(), &meta)
-	if err != nil {
-		return "", err
+	type probeResult struct {
+		Streams []stream `json:"streams"`
 	}
 
-	ratio := meta.Width / meta.Height
-	if ratio == 2 {
-		return "16:9", nil
-	} else if ratio == 1 {
-		return "9:16", nil
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx,
+		"ffprobe",
+		"-v", "error",
+		"-print_format", "json",
+		"-show_streams",
+		filePath,
+	)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("ffprobe failed: %w (stderr: %s)", err, stderr.String())
 	}
-	return "other", nil
+
+	var result probeResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		return "", fmt.Errorf("decode ffprobe output: %w", err)
+	}
+
+	if len(result.Streams) == 0 {
+		return "", fmt.Errorf("no streams found")
+	}
+
+	var w, h int
+	for _, s := range result.Streams {
+		if s.Width > 0 && s.Height > 0 {
+			w, h = s.Width, s.Height
+			break
+		}
+	}
+
+	if w == 0 || h == 0 {
+		return "", fmt.Errorf("no valid video stream with dimensions")
+	}
+
+	ratio := float64(w) / float64(h)
+
+	switch {
+	case almostEqual(ratio, 16.0/9.0):
+		return "16:9", nil
+	case almostEqual(ratio, 9.0/16.0):
+		return "9:16", nil
+	default:
+		return "other", nil
+	}
+}
+
+func almostEqual(a, b float64) bool {
+	const epsilon = 0.05
+	return math.Abs(a-b) < epsilon
 }

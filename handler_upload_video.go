@@ -7,13 +7,15 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
 )
 
 func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request) {
-	const maxMemory = 1 << 30
+	const uploadLimit = 1 << 30
+	r.Body = http.MaxBytesReader(w, r.Body, uploadLimit)
 
 	videoIDString := r.PathValue("videoID")
 	videoID, err := uuid.Parse(videoIDString)
@@ -44,12 +46,6 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	err = r.ParseMultipartForm(maxMemory)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Couldn't ParseMultipartForm", err)
-		return
-	}
-
 	file, header, err := r.FormFile("video")
 	if err != nil {
 		respondWithError(w, http.StatusBadRequest, "Couldn't read FormFile", err)
@@ -67,28 +63,27 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	assetPath := getAssetPath(mediaType)
-
 	const tName = "tubely-upload.mp4"
 	tFile, err := os.CreateTemp("", tName)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create temp file", err)
 		return
 	}
-	defer os.Remove(tName)
+	defer os.Remove(tFile.Name())
 	defer tFile.Close()
-	_, err = io.Copy(tFile, file)
-	if err != nil {
+
+	if _, err = io.Copy(tFile, file); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't copy to temp file", err)
 		return
 	}
-	_, err = tFile.Seek(0, io.SeekStart)
-	if err != nil {
+	if _, err = tFile.Seek(0, io.SeekStart); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't seek start of temp file", err)
 		return
 	}
 
-	ratio, err := getVideoAspectRatio(filepath.Join(os.TempDir(), tName))
+	assetPath := getAssetPath(mediaType)
+
+	ratio, err := getVideoAspectRatio(tFile.Name())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get aspect ratio", err)
 		return
@@ -98,13 +93,15 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		assetPath = filepath.Join("landscape", assetPath)
 	case "9:16":
 		assetPath = filepath.Join("portrait", assetPath)
+	default:
+		assetPath = filepath.Join("other", assetPath)
 	}
 
 	_, err = cfg.s3Client.PutObject(r.Context(), &s3.PutObjectInput{
-		Bucket:      &cfg.s3Bucket,
-		Key:         &assetPath,
+		Bucket:      aws.String(cfg.s3Bucket),
+		Key:         aws.String(assetPath),
 		Body:        tFile,
-		ContentType: &mediaType,
+		ContentType: aws.String(mediaType),
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't upload file to s3", err)
@@ -115,7 +112,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 
 	err = cfg.db.UpdateVideo(video)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't not UpdateVideo", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't UpdateVideo", err)
 		return
 	}
 
