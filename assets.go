@@ -86,17 +86,8 @@ func getVideoAspectRatio(filePath string) (string, error) {
 		return "", fmt.Errorf("no streams found")
 	}
 
-	var w, h int
-	for _, s := range result.Streams {
-		if s.Width > 0 && s.Height > 0 {
-			w, h = s.Width, s.Height
-			break
-		}
-	}
-
-	if w == 0 || h == 0 {
-		return "", fmt.Errorf("no valid video stream with dimensions")
-	}
+	w := result.Streams[0].Width
+	h := result.Streams[0].Height
 
 	ratio := float64(w) / float64(h)
 
