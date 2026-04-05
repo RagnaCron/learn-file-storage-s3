@@ -105,3 +105,26 @@ func almostEqual(a, b float64) bool {
 	const epsilon = 0.05
 	return math.Abs(a-b) < epsilon
 }
+
+func processVideoForFastStart(filePath string) (string, error) {
+	nFilePath := filePath + ".processing"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	com := exec.CommandContext(ctx,
+		"ffmpeg",
+		"-i", filePath,
+		"-c", "copy",
+		"-movflags", "faststart",
+		"-f", "mp4", nFilePath)
+
+	var stderr bytes.Buffer
+	com.Stderr = &stderr
+
+	if err := com.Run(); err != nil {
+		return "", fmt.Errorf("ffmpeg failed: %w (stderr: %s)", err, stderr.String())
+	}
+
+	return nFilePath, nil
+}
