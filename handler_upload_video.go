@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -120,7 +122,7 @@ func (cfg *apiConfig) handlerUploadVideo(w http.ResponseWriter, r *http.Request)
 		respondWithError(w, http.StatusInternalServerError, "Couldn't upload file to s3", err)
 	}
 
-	url := cfg.getVideoURL(assetPath)
+	url := fmt.Sprintf("%s,%s", cfg.s3Bucket, assetPath)
 	video.VideoURL = &url
 
 	err = cfg.db.UpdateVideo(video)
