@@ -13,9 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/database"
 )
 
 func (cfg apiConfig) ensureAssetsDir() error {
@@ -41,7 +38,7 @@ func (cfg apiConfig) getAssetURL(assetPath string) string {
 }
 
 func (cfg apiConfig) getVideoURL(assetPath string) string {
-	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", cfg.s3Bucket, cfg.s3Region, assetPath)
+	return fmt.Sprintf("%s/%s", cfg.s3CfDistribution, assetPath)
 }
 
 func mediaTypeToExt(mediaType string) string {
@@ -130,19 +127,4 @@ func processVideoForFastStart(filePath string) (string, error) {
 	}
 
 	return nFilePath, nil
-}
-
-func generatePresignedURL(s3Client *s3.Client, bucket, key string, expireTime time.Duration) (string, error) {
-	pClient := s3.NewPresignClient(s3Client)
-
-	req, err := pClient.PresignGetObject(context.Background(), &s3.GetObjectInput{Bucket: &bucket, Key: &key}, s3.WithPresignExpires(expireTime))
-	if err != nil {
-		return "", fmt.Errorf("PresignGetObject error: %w", err)
-	}
-
-	return req.URL, nil
-}
-
-func (cfg *apiConfig) dbVideoToSignedVideo(video database.Video) (database.Video, error) {
-
 }
